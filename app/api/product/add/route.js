@@ -16,14 +16,14 @@ export async function POST(request) {
   try {
     const { userId } = getAuth(request);
 
-    const isSeller = await authSeller(userId);
+    // const isSeller = await authSeller(userId);
 
-    if (!isSeller) {
-      return NextResponse.json({
-        success: false,
-        message: "not authorized",
-      });
-    }
+    // if (!isSeller) {
+    //   return NextResponse.json({
+    //     success: false,
+    //     message: "not authorized",
+    //   });
+    // }
 
     const formData = await request.formData();
 
