@@ -1,82 +1,120 @@
 "use client";
-import { productsDummyData, userDummyData } from "@/assets/assets";
-import { useUser } from "@clerk/nextjs";
+import { productsDummyData } from "@/assets/assets";
+import { useAuth, useUser } from "@clerk/nextjs";
+import axios from "axios";
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 export const AppContext = createContext();
 
-export const useAppContext = () => {
-  return useContext(AppContext);
-};
+export const useAppContext = () => useContext(AppContext);
 
 export const AppContextProvider = (props) => {
   const currency = process.env.NEXT_PUBLIC_CURRENCY;
   const router = useRouter();
+
   const { user } = useUser();
+  const { getToken } = useAuth(); // ✅ Correct usage of Clerk hook
+
   const [products, setProducts] = useState([]);
   const [userData, setUserData] = useState(false);
-  const [isSeller, setIsSeller] = useState(true);
+  const [isSeller, setIsSeller] = useState(false);
   const [cartItems, setCartItems] = useState({});
 
+  // -----------------------------
+  // Fetch Dummy Products
+  // -----------------------------
   const fetchProductData = async () => {
     setProducts(productsDummyData);
   };
 
+  // -----------------------------
+  // Fetch User Data (with JWT)
+  // -----------------------------
   const fetchUserData = async () => {
-    setUserData(userDummyData);
+    try {
+      if (user?.publicMetadata?.role === "seller") {
+        setIsSeller(true);
+      }
+
+      const token = await getToken(); // ✅ MUST CALL getToken()
+      if (!token) {
+        toast.error("Authentication token missing");
+        return;
+      }
+
+      const { data } = await axios.get("/api/user/data", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (data.success) {
+        setUserData(data.user);
+        setCartItems(data.user.cartItems);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(error.message || "Failed to fetch user data");
+    }
   };
 
-  const addToCart = async (itemId) => {
-    let cartData = structuredClone(cartItems);
-    if (cartData[itemId]) {
-      cartData[itemId] += 1;
-    } else {
-      cartData[itemId] = 1;
-    }
+  // -----------------------------
+  // Cart Functions
+  // -----------------------------
+  const addToCart = (itemId) => {
+    const cartData = structuredClone(cartItems);
+
+    cartData[itemId] = cartData[itemId] ? cartData[itemId] + 1 : 1;
+
     setCartItems(cartData);
   };
 
-  const updateCartQuantity = async (itemId, quantity) => {
-    let cartData = structuredClone(cartItems);
+  const updateCartQuantity = (itemId, quantity) => {
+    const cartData = structuredClone(cartItems);
+
     if (quantity === 0) {
       delete cartData[itemId];
     } else {
       cartData[itemId] = quantity;
     }
+
     setCartItems(cartData);
   };
 
   const getCartCount = () => {
-    let totalCount = 0;
-    for (const items in cartItems) {
-      if (cartItems[items] > 0) {
-        totalCount += cartItems[items];
-      }
-    }
-    return totalCount;
+    return Object.values(cartItems).reduce((acc, qty) => acc + qty, 0);
   };
 
   const getCartAmount = () => {
-    let totalAmount = 0;
-    for (const items in cartItems) {
-      let itemInfo = products.find((product) => product._id === items);
-      if (cartItems[items] > 0) {
-        totalAmount += itemInfo.offerPrice * cartItems[items];
+    let total = 0;
+    for (const id in cartItems) {
+      const item = products.find((p) => p._id === id);
+      if (item) {
+        total += item.offerPrice * cartItems[id];
       }
     }
-    return Math.floor(totalAmount * 100) / 100;
+    return Math.round(total * 100) / 100;
   };
 
+  // -----------------------------
+  // Run Effects
+  // -----------------------------
   useEffect(() => {
     fetchProductData();
   }, []);
 
   useEffect(() => {
-    fetchUserData();
-  }, []);
+    if (user) {
+      fetchUserData();
+    }
+  }, [user]);
 
+  // -----------------------------
+  // Context Value
+  // -----------------------------
   const value = {
+    getToken, // ✔ Correctly passing getToken() function
     user,
     currency,
     router,
